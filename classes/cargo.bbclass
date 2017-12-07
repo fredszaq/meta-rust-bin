@@ -6,9 +6,9 @@ export CARGO_HOME = "${WORKDIR}/cargo_home"
 # If something fails while building, this might give useful information
 export RUST_BACKTRACE = "1"
 
+# GCC is required to link native build script executables
 DEPENDS += "\
-    rust-bin \
-    cargo-bin-native \
+    cargo-bin-cross-${TARGET_ARCH} \
 "
 
 # Do build out-of-tree
@@ -19,6 +19,7 @@ export CARGO_TARGET_DIR = "${B}"
 # the BUILD system.
 RUST_TARGET = "${@rust_target(d, 'TARGET')}"
 RUST_TARGET_class-native = "${@rust_target(d, 'BUILD')}"
+RUST_BUILD_TARGET = "${@rust_target(d, 'BUILD')}"
 
 # Additional flags passed directly to the "cargo build" invocation
 EXTRA_CARGO_FLAGS ??= ""
@@ -42,7 +43,10 @@ CARGO_BUILD_FLAGS = "\
 create_cargo_config() {
     cat >${CARGO_HOME}/config << EOF
 [target.${RUST_TARGET}]
-linker = "${WRAPPER_DIR}/cc-wrapper.sh"
+linker = "${WRAPPER_DIR}/target-ld-wrapper.sh"
+
+[target.${RUST_BUILD_TARGET}]
+linker = "${WRAPPER_DIR}/build-ld-wrapper.sh"
 
 [build]
 rustflags = ["-C", "rpath"]
@@ -60,9 +64,18 @@ cargo_do_configure() {
     # Yocto provides the C compiler in ${CC} but that includes options beyond
     # the compiler binary. cargo/rustc expect a single binary, so we put ${CC}
     # in a wrapper script.
-    echo "#!/bin/sh" >"${WRAPPER_DIR}/cc-wrapper.sh"
-    echo "${CC} \$@" >>"${WRAPPER_DIR}/cc-wrapper.sh"
-    chmod +x "${WRAPPER_DIR}/cc-wrapper.sh"
+    echo "#!/bin/sh" >"${WRAPPER_DIR}/target-cc-wrapper.sh"
+    echo "${CC} ${CFLAGS} \$@" >>"${WRAPPER_DIR}/target-cc-wrapper.sh"
+    chmod +x "${WRAPPER_DIR}/target-cc-wrapper.sh"
+
+    echo "#!/bin/sh" >"${WRAPPER_DIR}/target-ld-wrapper.sh"
+    echo "${CC} ${LDFLAGS} \$@" >>"${WRAPPER_DIR}/target-ld-wrapper.sh"
+    chmod +x "${WRAPPER_DIR}/target-ld-wrapper.sh"
+
+    # Required for linking build scripts
+    echo "#!/bin/sh" >"${WRAPPER_DIR}/build-ld-wrapper.sh"
+    echo "${BUILD_CC} ${BUILD_LDFLAGS} \$@" >>"${WRAPPER_DIR}/build-ld-wrapper.sh"
+    chmod +x "${WRAPPER_DIR}/build-ld-wrapper.sh"
 
     # Create our global config in CARGO_HOME
     create_cargo_config
@@ -76,7 +89,7 @@ def build_type(d):
         return "release"
 
 cargo_do_compile() {
-    export CC="${WRAPPER_DIR}/cc-wrapper.sh"
+    export CC="${WRAPPER_DIR}/target-cc-wrapper.sh"
     export PKG_CONFIG_ALLOW_CROSS="1"
     bbnote "which rustc:" `which rustc`
     bbnote "rustc --version" `rustc --version`
