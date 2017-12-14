@@ -1,15 +1,12 @@
 inherit rust-common
 
+DEPENDS += "cargo-bin-cross-${TARGET_ARCH}"
+
 # Move CARGO_HOME from default of ~/.cargo
 export CARGO_HOME = "${WORKDIR}/cargo_home"
 
 # If something fails while building, this might give useful information
 export RUST_BACKTRACE = "1"
-
-# GCC is required to link native build script executables
-DEPENDS += "\
-    cargo-bin-cross-${TARGET_ARCH} \
-"
 
 # Do build out-of-tree
 B = "${WORKDIR}/target"
@@ -27,6 +24,9 @@ EXTRA_CARGO_FLAGS ??= ""
 # Space-separated list of features to enable
 CARGO_FEATURES ??= ""
 
+# Control the Cargo build type (debug or release)
+CARGO_BUILD_TYPE ?= "--release"
+
 CARGO_DEBUG_DIR = "${B}/${RUST_TARGET}/debug"
 CARGO_RELEASE_DIR = "${B}/${RUST_TARGET}/release"
 WRAPPER_DIR = "${WORKDIR}/wrappers"
@@ -35,7 +35,7 @@ CARGO_BUILD_FLAGS = "\
     --verbose \
     --manifest-path ${S}/Cargo.toml \
     --target=${RUST_TARGET} \
-    --${@build_type(d)} \
+    ${CARGO_BUILD_TYPE} \
     ${@base_conditional('CARGO_FEATURES', '', '', '--features "${CARGO_FEATURES}"', d)} \
     ${EXTRA_CARGO_FLAGS} \
 "
@@ -81,13 +81,6 @@ cargo_do_configure() {
     create_cargo_config
 }
 
-def build_type(d):
-    is_debug_build = d.getVar("PN", True).endswith("-dbg")
-    if is_debug_build:
-        return "debug"
-    else:
-        return "release"
-
 cargo_do_compile() {
     export CC="${WRAPPER_DIR}/target-cc-wrapper.sh"
     export PKG_CONFIG_ALLOW_CROSS="1"
@@ -101,10 +94,10 @@ cargo_do_compile() {
 
 cargo_do_install() {
     install -d "${D}${bindir}"
-    if [ "${@build_type}" = "debug" ]; then
-        local cargo_bindir="${CARGO_DEBUG_DIR}"
-    else
+    if [ "${CARGO_BUILD_TYPE}" = "--release" ]; then
         local cargo_bindir="${CARGO_RELEASE_DIR}"
+    else
+        local cargo_bindir="${CARGO_DEBUG_DIR}"
     fi
 
     local files_installed=""

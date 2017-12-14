@@ -6,6 +6,7 @@ SECTION = "devel"
 inherit cross
 inherit rust-common
 
+# Required to link binaries
 DEPENDS += "gcc-cross-${TARGET_ARCH}"
 
 PN = "rust-bin-cross-${TARGET_ARCH}"
